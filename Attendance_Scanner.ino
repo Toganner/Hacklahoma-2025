@@ -32,15 +32,16 @@ String byteArrayToString(const byte* byteArray, size_t length) {
 void write() {
   
     if (nfc.tagPresent()) {
-        Serial.println("Cleaning Card");
+        Serial.println("\n--- NFC Tag Detected ---");
+        //Serial.println("Cleaning Card");
         //nfc.clean();
-        Serial.println("Formatting Card");
+        //Serial.println("Formatting Card");
         nfc.format();
 
         Serial.println("Writing multiple records to NFC tag");
         NdefMessage message = NdefMessage();
         message.addTextRecord("Hello, Arduino!");
-        //message.addUriRecord("https://arduino.cc");
+        // message.addUriRecord("https://arduino.cc");
         message.addTextRecord("Goodbye, Arduino!");
         boolean success = nfc.write(message);
         if (success) {
@@ -57,70 +58,83 @@ void write() {
 }
 
 void read() {
+  // Serial.println("Start Read Funtion");
     if (nfc.tagPresent()) {
-        Serial.println("Reading NFC tag");
+        Serial.println("\n--- NFC Tag Detected ---");
+
         NfcTag tag = nfc.read();
 
-        Serial.print("Tag Type: ");
-        Serial.println(tag.getTagType());
+        // Serial.print("Tag Type: ");
+        // Serial.println(tag.getTagType());
 
-        Serial.print("UID: ");
-        Serial.println(tag.getUidString());
+        // Serial.print("UID: ");
+        // Serial.println(tag.getUidString());
 
         if (tag.hasNdefMessage()) {
-            Serial.println("Getting NDEF Message");
             NdefMessage message = tag.getNdefMessage();
-            Serial.print("This NFC Tag contains ");
-            Serial.print(message.getRecordCount());
-            Serial.println(" NDEF record(s).");
+            int recordCount = message.getRecordCount();
 
-            // Loop through all the records in the NDEF message
-            for (int i = 0; i < message.getRecordCount(); i++) {
+            // Serial.print("This NFC Tag contains ");
+            // Serial.print(recordCount);
+            // Serial.println(" NDEF record(s).");
+            // Serial.println("-----------------------");
+
+            // Loop through all records in the NDEF message
+            for (int i = 0; i < recordCount; i++) {
                 NdefRecord record = message.getRecord(i);
-                Serial.print("Record ");
-                Serial.println(i + 1);
-                Serial.print("TNF: ");
-                Serial.println(record.getTnf());
-
-                // Convert 'record.getType()' to a readable format before printing
-                Serial.print("Type: ");
-                String typeStr = "";
-                const byte* type = record.getType();
-                int typeLength = record.getTypeLength();
-                for (int j = 0; j < typeLength; j++) {
-                    typeStr += (char)type[j];  // Convert each byte to a character
-                }
-                Serial.println(typeStr);  // Now prints the type correctly
-
-                // Get the payload (data) of the record
                 int payloadLength = record.getPayloadLength();
-                const byte* payload = record.getPayload();  // ✅ Correct way to retrieve payload
+                const byte* payload = record.getPayload();
 
-                // Print the payload in hexadecimal format
-                Serial.print("Payload (HEX): ");
-                for (int j = 0; j < payloadLength; j++) {
-                    if (payload[j] < 0x10) {
-                        Serial.print("0");  // Add a leading zero for single-digit hex values
-                    }
-                    Serial.print(payload[j], HEX);  // Print each byte in hex
-                    Serial.print(" ");
+                // Skip empty records
+                if (payloadLength == 0 || payload == nullptr) {
+                    // Serial.print("Skipping empty record ");
+                    // Serial.println(i + 1);
+                    continue;
                 }
-                Serial.println();
 
-                // Convert the payload to a string and print it
-                Serial.print("Payload (as String): ");
+                // Serial.print("Record ");
+                // Serial.println(i + 1);
+                // Serial.print("TNF: ");
+                // Serial.println(record.getTnf());
+
+                // Convert and print record type
+                // Serial.print("Type: ");
+                String typeStr = "";
+                for (int j = 0; j < record.getTypeLength(); j++) {
+                    typeStr += (char)record.getType()[j];
+                }
+                // Serial.println(typeStr);
+
+                // Print payload in HEX format
+                // Serial.print("Payload (HEX): ");
+                // for (int j = 0; j < payloadLength; j++) {
+                //     if (payload[j] < 0x10) Serial.print("0");  // Add leading zero for formatting
+                //     Serial.print(payload[j], HEX);
+                //     Serial.print(" ");
+                // }
+                // Serial.println();
+
+                // Convert and print payload as string (if applicable)
+                // Serial.print("Payload (Text): ");
                 String payloadAsString = "";
-                for (int j = 0; j < payloadLength; j++) {
-                    payloadAsString += (char)payload[j];  // Convert each byte to a character
+                
+                // Skip NDEF text record prefix if present (first byte is language code length)
+                int textStartIndex = (typeStr == "T" && payloadLength > 1) ? payload[0] + 1 : 0;
+                
+                for (int j = textStartIndex; j < payloadLength; j++) {
+                    payloadAsString += (char)payload[j];
                 }
-                Serial.println(payloadAsString);  // Now prints the string correctly
+                Serial.println(payloadAsString);
+                // Serial.println("-----------------------");
             }
         } else {
             Serial.println("No NDEF message found on this tag.");
         }
     }
-    delay(1000);  // Short delay to avoid repeating reads too quickly
+    delay(1000);  // Avoid rapid consecutive reads
 }
+
+
 
 void setup() {
     Serial.begin(9600);
