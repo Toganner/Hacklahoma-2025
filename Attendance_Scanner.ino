@@ -1,13 +1,14 @@
 #define CS_PIN 10
 #define NDEF_USE_SERIAL
-
-
+#define BUFFER_SIZE 50 
 
 #include <SPI.h>
 #include <MFRC522.h>
 #include "NfcAdapter.h"
 #include <NDEF.h>
 
+char id[BUFFER_SIZE];
+int index = 0;                   
 const int modePin = 4;
 const int startPin = 5;
 int buttonState = 0;
@@ -64,8 +65,28 @@ void convertIDtoBytes(const char id[10], byte byteData[16]) {
     strncpy((char*)byteData, id, 9);  // Copy up to 9 characters from id
 }
 
-void write(char id[]) {
- if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+//void write(char id[]) {
+void write() {
+  while (!Serial.available()) {
+    // Wait until there is data available in the Serial buffer
+    delay(10);  // Small delay to avoid excessive CPU usage
+  }
+
+  while (Serial.available()) {
+      char incomingByte = Serial.read();  // Read one byte at a time
+      if (incomingByte != '\n' && index < BUFFER_SIZE - 1) {
+          id[index++] = incomingByte;
+      } 
+      else {
+          id[index] = '\0';  // Null terminate the string
+          index = 0;  // Reset index for next input
+          break;  // Exit loop once a full message is received
+      }
+  }
+  while (!mfrc522.PICC_IsNewCardPresent()) {
+    delay(10);  // Small delay to avoid excessive CPU usage
+  }
+  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
         tagPresentMessagePrinted = false;
         // For Ultralight cards, no PICC_Select is needed.
         
@@ -90,8 +111,8 @@ void write(char id[]) {
             }
             MFRC522::StatusCode status = mfrc522.MIFARE_Ultralight_Write(startPage + i, pageBuffer, 4);
             if (status != MFRC522::STATUS_OK) {
-                Serial.print("Write failed for page ");
-                Serial.println(startPage + i);
+                // Serial.print("Write failed for page ");
+                // Serial.println(startPage + i);
                 mfrc522.PICC_HaltA();
                 return;
             }
@@ -159,6 +180,8 @@ void setup() {
 
     digitalWrite(2,LOW);
     digitalWrite(3,HIGH);
+
+    Serial.println("Read Mode");
 }
 
 void loop() {
@@ -179,15 +202,14 @@ void loop() {
         flag = 0; // read mode
         Serial.println("Read Mode");
       }
-      delay(200);
+      delay(2000);
     }
 
       if (flag == 0) {
         read();
       }
       else {
-        char id[10] = "113602867";
-        write(id);
+        write();
       }
       delay(200);
 
