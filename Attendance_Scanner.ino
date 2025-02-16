@@ -17,6 +17,9 @@ int previousStartState = LOW;
 int modeState = LOW;
 int startState = LOW;
 
+// Flag to track if "No tag present" has been printed
+bool tagPresentMessagePrinted = false;
+
 MFRC522 mfrc522(CS_PIN, UINT8_MAX); // Create MFRC522 instance
 
 NfcAdapter nfc = NfcAdapter(&mfrc522);
@@ -29,112 +32,118 @@ String byteArrayToString(const byte* byteArray, size_t length) {
     return result;
 }
 
-void write() {
-  
-    if (nfc.tagPresent()) {
-        Serial.println("\n--- NFC Tag Detected ---");
-        //Serial.println("Cleaning Card");
-        //nfc.clean();
-        //Serial.println("Formatting Card");
-        nfc.format();
+MFRC522::StatusCode MIFARE_Ultralight_Read(byte page, byte *buffer, byte *bufferSize) {
+    // Build command: 0x30 (READ) + page + 2-byte CRC
+    byte cmd[4];
+    cmd[0] = 0x30;
+    cmd[1] = page;
+    // Calculate the CRC for the first 2 bytes and store in cmd[2..3]
+    mfrc522.PCD_CalculateCRC(cmd, 2, &cmd[2]);
 
-        Serial.println("Writing multiple records to NFC tag");
-        NdefMessage message = NdefMessage();
-        message.addTextRecord("Hello, Arduino!");
-        // message.addUriRecord("https://arduino.cc");
-        message.addTextRecord("Goodbye, Arduino!");
-        boolean success = nfc.write(message);
-        if (success) {
-            Serial.println("\tSuccess. Try reading this tag with your phone.");
-            delay(5000);
-        } else {
-            Serial.println("\tWrite failed");
-        }
+    byte reply[18];    // Expect 16 bytes of data + 2 bytes of CRC from the card
+    byte replySize = sizeof(reply);
+
+    MFRC522::StatusCode status = mfrc522.PCD_TransceiveData(cmd, 4, reply, &replySize);
+    if (status != MFRC522::STATUS_OK) {
+        return status;
     }
-    else {
-    Serial.println("No NFC tag detected.");
-    return;
+    // We expect 18 bytes in response (16 data + 2 CRC)
+    if (replySize != 18) {
+        return MFRC522::STATUS_ERROR;
+    }
+    // Copy the 16 data bytes to the provided buffer
+    for (byte i = 0; i < 16; i++) {
+        buffer[i] = reply[i];
+    }
+    *bufferSize = 16;
+    return MFRC522::STATUS_OK;
+}
+
+void convertIDtoBytes(const char id[10], byte byteData[16]) {
+    memset(byteData, ' ', 16);  // Fill entire byte array with spaces (' ')
+    strncpy((char*)byteData, id, 9);  // Copy up to 9 characters from id
+}
+
+void write(char id[]) {
+ if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+        tagPresentMessagePrinted = false;
+        // For Ultralight cards, no PICC_Select is needed.
+        
+        byte startPage = 4;  // Typically the first writable page on Ultralight
+        // Prepare 16 bytes of data (4 pages x 4 bytes each)
+
+      //char id[10] = "123456789"; // Changeable ID (9 digits + null terminator)
+      byte data[16]; // 16-byte storage
+
+      convertIDtoBytes(id, data); // Convert ID to bytes
+
+        // byte data[16] = { 'D','u','m','m',
+        //                   'y',' ','T','e',
+        //                   'x','t',' ','1',
+        //                   '2','3','4','5' };
+        
+        // Write data one page (4 bytes) at a time.
+        for (byte i = 0; i < 4; i++) {
+            byte pageBuffer[4];
+            for (byte j = 0; j < 4; j++) {
+                pageBuffer[j] = data[i * 4 + j];
+            }
+            MFRC522::StatusCode status = mfrc522.MIFARE_Ultralight_Write(startPage + i, pageBuffer, 4);
+            if (status != MFRC522::STATUS_OK) {
+                Serial.print("Write failed for page ");
+                Serial.println(startPage + i);
+                mfrc522.PICC_HaltA();
+                return;
+            }
+        }
+        Serial.println("Write success!");
+        mfrc522.PICC_HaltA();
+    } else {
+        if (!tagPresentMessagePrinted) {
+            // Serial.println("No tag present.");
+            tagPresentMessagePrinted = true;
+        }
     }
 }
 
 void read() {
-  // Serial.println("Start Read Funtion");
-    if (nfc.tagPresent()) {
-        Serial.println("\n--- NFC Tag Detected ---");
-
-        NfcTag tag = nfc.read();
-
-        // Serial.print("Tag Type: ");
-        // Serial.println(tag.getTagType());
-
-        // Serial.print("UID: ");
-        // Serial.println(tag.getUidString());
-
-        if (tag.hasNdefMessage()) {
-            NdefMessage message = tag.getNdefMessage();
-            int recordCount = message.getRecordCount();
-
-            // Serial.print("This NFC Tag contains ");
-            // Serial.print(recordCount);
-            // Serial.println(" NDEF record(s).");
-            // Serial.println("-----------------------");
-
-            // Loop through all records in the NDEF message
-            for (int i = 0; i < recordCount; i++) {
-                NdefRecord record = message.getRecord(i);
-                int payloadLength = record.getPayloadLength();
-                const byte* payload = record.getPayload();
-
-                // Skip empty records
-                if (payloadLength == 0 || payload == nullptr) {
-                    // Serial.print("Skipping empty record ");
-                    // Serial.println(i + 1);
-                    continue;
-                }
-
-                // Serial.print("Record ");
-                // Serial.println(i + 1);
-                // Serial.print("TNF: ");
-                // Serial.println(record.getTnf());
-
-                // Convert and print record type
-                // Serial.print("Type: ");
-                String typeStr = "";
-                for (int j = 0; j < record.getTypeLength(); j++) {
-                    typeStr += (char)record.getType()[j];
-                }
-                // Serial.println(typeStr);
-
-                // Print payload in HEX format
-                // Serial.print("Payload (HEX): ");
-                // for (int j = 0; j < payloadLength; j++) {
-                //     if (payload[j] < 0x10) Serial.print("0");  // Add leading zero for formatting
-                //     Serial.print(payload[j], HEX);
-                //     Serial.print(" ");
-                // }
-                // Serial.println();
-
-                // Convert and print payload as string (if applicable)
-                // Serial.print("Payload (Text): ");
-                String payloadAsString = "";
-                
-                // Skip NDEF text record prefix if present (first byte is language code length)
-                int textStartIndex = (typeStr == "T" && payloadLength > 1) ? payload[0] + 1 : 0;
-                
-                for (int j = textStartIndex; j < payloadLength; j++) {
-                    payloadAsString += (char)payload[j];
-                }
-                Serial.println(payloadAsString);
-                // Serial.println("-----------------------");
-            }
+      if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
+        tagPresentMessagePrinted = false;
+        // For Ultralight cards, no PICC_Select is needed.
+        
+        byte startPage = 4; // starting page for read (pages 4-7)
+        byte readBuffer[18]; // buffer to hold 16 data bytes + 2 CRC bytes from the read function
+        byte size = sizeof(readBuffer);
+        
+        MFRC522::StatusCode status = MIFARE_Ultralight_Read(startPage, readBuffer, &size);
+        if (status != MFRC522::STATUS_OK) {
+            // Serial.print("Read failed for page ");
+            // Serial.println(startPage);
         } else {
-            Serial.println("No NDEF message found on this tag.");
+            // Serial.print("Data read from pages ");
+            // Serial.print(startPage);
+            // Serial.print(" to ");
+            // Serial.print(startPage + 3);
+            // Serial.print(": ");
+            // Print the 16 data bytes.
+            // for (byte i = 0; i < 16; i++) {
+            //     Serial.write(readBuffer[i]);
+            // }
+            // Serial.println();
+            char idString[17];  // 16 bytes + null terminator
+            memcpy(idString, readBuffer, 16); // Copy bytes into the string
+            idString[16] = '\0'; // Ensure null termination
+
+            Serial.println(idString); // Print the stored string
+        }
+        mfrc522.PICC_HaltA();
+    } else {
+        if (!tagPresentMessagePrinted) {
+            // Serial.println("No tag present.");
+            tagPresentMessagePrinted = true;
         }
     }
-    delay(1000);  // Avoid rapid consecutive reads
 }
-
-
 
 void setup() {
     Serial.begin(9600);
@@ -172,20 +181,15 @@ void loop() {
       }
       delay(200);
     }
-    if(previousStartState == HIGH && startState == LOW) {
-      //Serial.println("Start button pressed"); // Debugging
-    //while (modeState == LOW) {
+
       if (flag == 0) {
-//        Serial.println("read");
         read();
       }
       else {
-//        Serial.println("write");
-        write();
+        char id[10] = "113602867";
+        write(id);
       }
       delay(200);
-      }
-    //}
 
     previousModeState = modeState;
     previousStartState = startState;
