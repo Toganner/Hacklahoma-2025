@@ -67,64 +67,73 @@ void convertIDtoBytes(const char id[10], byte byteData[16]) {
 
 //void write(char id[]) {
 void write() {
-  while (!Serial.available()) {
-    // Wait until there is data available in the Serial buffer
-    delay(10);  // Small delay to avoid excessive CPU usage
-  }
+    Serial.println("Waiting for serial input...");
 
-  while (Serial.available()) {
-      char incomingByte = Serial.read();  // Read one byte at a time
-      if (incomingByte != '\n' && index < BUFFER_SIZE - 1) {
-          id[index++] = incomingByte;
-      } 
-      else {
-          id[index] = '\0';  // Null terminate the string
-          index = 0;  // Reset index for next input
-          break;  // Exit loop once a full message is received
-      }
-  }
-  while (!mfrc522.PICC_IsNewCardPresent()) {
-    delay(10);  // Small delay to avoid excessive CPU usage
-  }
-  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
-        tagPresentMessagePrinted = false;
-        // For Ultralight cards, no PICC_Select is needed.
-        
-        byte startPage = 4;  // Typically the first writable page on Ultralight
-        // Prepare 16 bytes of data (4 pages x 4 bytes each)
+    // Wait until Serial has received a full 9-digit message
+    while (Serial.available() < 9) {
+        delay(10);  // Prevent CPU overuse
+    }
 
-      //char id[10] = "123456789"; // Changeable ID (9 digits + null terminator)
-      byte data[16]; // 16-byte storage
-
-      convertIDtoBytes(id, data); // Convert ID to bytes
-
-        // byte data[16] = { 'D','u','m','m',
-        //                   'y',' ','T','e',
-        //                   'x','t',' ','1',
-        //                   '2','3','4','5' };
-        
-        // Write data one page (4 bytes) at a time.
-        for (byte i = 0; i < 4; i++) {
-            byte pageBuffer[4];
-            for (byte j = 0; j < 4; j++) {
-                pageBuffer[j] = data[i * 4 + j];
-            }
-            MFRC522::StatusCode status = mfrc522.MIFARE_Ultralight_Write(startPage + i, pageBuffer, 4);
-            if (status != MFRC522::STATUS_OK) {
-                // Serial.print("Write failed for page ");
-                // Serial.println(startPage + i);
-                mfrc522.PICC_HaltA();
-                return;
-            }
-        }
-        Serial.println("Write success!");
-        mfrc522.PICC_HaltA();
-    } else {
-        if (!tagPresentMessagePrinted) {
-            // Serial.println("No tag present.");
-            tagPresentMessagePrinted = true;
+    // Read the full message
+    index = 0;
+    while (Serial.available()) {
+        char incomingByte = Serial.read();
+        if (incomingByte != '\n' && index < BUFFER_SIZE - 1) {
+            id[index++] = incomingByte;
+        } else {
+            id[index] = '\0';  // Null terminate
+            break;  // Exit loop when newline is detected
         }
     }
+
+    Serial.print("Received ID: ");
+    Serial.println(id);
+
+    // Validate ID length
+    if (strlen(id) != 9) {
+        Serial.println("Error: Invalid ID length. Expected 9 digits.");
+        return;
+    }
+
+    Serial.println("Waiting for NFC card...");
+
+    // Wait for a new NFC card to be present
+    while (!mfrc522.PICC_IsNewCardPresent()) {
+        delay(10);
+    }
+
+    // Ensure the card is still present and readable
+    if (!mfrc522.PICC_ReadCardSerial()) {
+        Serial.println("Error: Failed to read card. Try again.");
+        return;
+    }
+
+    Serial.println("Card detected! Writing...");
+
+    // Prepare 16 bytes of data (4 pages x 4 bytes each)
+    byte data[16];
+    convertIDtoBytes(id, data);
+
+    byte startPage = 4;  // First writable page
+
+    // Write data one page (4 bytes) at a time
+    for (byte i = 0; i < 4; i++) {
+        byte pageBuffer[4];
+        for (byte j = 0; j < 4; j++) {
+            pageBuffer[j] = data[i * 4 + j];
+        }
+
+        MFRC522::StatusCode status = mfrc522.MIFARE_Ultralight_Write(startPage + i, pageBuffer, 4);
+        if (status != MFRC522::STATUS_OK) {
+            Serial.print("Write failed for page ");
+            Serial.println(startPage + i);
+            mfrc522.PICC_HaltA();
+            return;
+        }
+    }
+
+    Serial.println("Write success!");
+    mfrc522.PICC_HaltA();
 }
 
 void read() {
@@ -208,7 +217,7 @@ void loop() {
       if (flag == 0) {
         read();
       }
-      else {
+      else if (flag == 1 && Serial.available()){
         write();
       }
       delay(200);
