@@ -2,6 +2,7 @@
 import time
 import serial
 import pandas as pd
+from web3 import Web3
 
 # Change 'COM3' to the correct port for your Arduino
 ser = serial.Serial('COM3', 9600)
@@ -47,6 +48,30 @@ def write_to_excel(user_id):
     df.to_excel(file_path, index=False)
     print(f"Excel file {file_path} updated successfully.")
 
+    ganache_url = "http://127.0.0.1:7545/"  # Update if needed
+    w3 = Web3(Web3.HTTPProvider(ganache_url))
+
+    sender_address = "0xaE1AE1Ad2B2784C2b0C72a37e062f023A2B4C865"
+    private_key = "0x9f2b812bcc4d80ca79c33f2bdd55f190035cb23d87c0370cd2f65a3048395f15"
+
+    def send_eth(receiver_address):
+        nonce = w3.eth.get_transaction_count(sender_address)
+        txn = {
+            'to': receiver_address,
+            'value': Web3.to_wei(0.01, 'ether'),  # Amount to send
+            'gas': 21000,
+            'gasPrice': Web3.to_wei('10', 'gwei'),
+            'nonce': nonce,
+            'chainId': 1337  # Ganache's Chain ID
+        }
+
+        signed_txn = w3.eth.account.sign_transaction(txn, private_key)
+        tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
+        return w3.to_hex(tx_hash)
+    
+    send_eth(ethereum_account)
+
+
 loopRun = 0
 
 # def main():
@@ -71,3 +96,5 @@ while True:
             print(f"Sent: {user_input}")
     loopRun+=1
 ser.close()
+
+
