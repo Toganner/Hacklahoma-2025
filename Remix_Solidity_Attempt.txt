@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MI
+pragma solidity ^0.8.20; //Specifies the license and solidity compiler version
+
+contract TestingPOAP {
+
+    string userID;
+
+    function setUserID(string memory inputID) public {
+
+        userID = inputID;
+    }
+
+    function getToken() public view returns (string memory) {
+
+        return string(abi.encodePacked(userID, ".token"));
+        
+    }
+
+}
