@@ -1,0 +1,46 @@
+import serial
+import pandas as pd
+
+# Change 'COM3' to the correct port for your Arduino
+ser = serial.Serial('COM5', 9600)
+
+# Wait for the User ID from the Arduino
+while True:
+    if ser.in_waiting > 0:
+        user_id = ser.readline().decode('utf-8').strip()
+        print(f"User ID: {user_id}")
+        break
+
+ser.close()
+
+
+# Load the Excel file
+file_path = r'C:\Users\brett\OneDrive\Documents\Book1.xlsx'
+df = pd.read_excel(file_path)
+
+
+
+df['User_ID'] = df['User_ID'].astype(str)
+
+# Print DataFrame columns to ensure correct names
+print("DataFrame columns:", df.columns)
+print("Excel DataFrame:")
+print(df)
+
+
+
+
+# Find the row with the matching User_ID and increment the Student_Attendence
+found = False
+for index, row in df.iterrows():
+    print(f"Checking User_ID {row['User_ID']}")
+    if row['User_ID'] == user_id:
+        df.at[index, 'Student_Attendence'] += 1
+        print(f"Updated Student_Attendence for User_ID {user_id}")
+        found = True
+        break
+
+if not found:
+    print(f"User_ID {user_id} not found in the Excel file.")
+# Save the updated Excel file
+df.to_excel(file_path, index=False)
